@@ -1,0 +1,27 @@
+{
+  "name": "vebko-vision",
+  "version": "1.0.0",
+  "description": "",
+  "main": "server.ts",
+  "scripts": {
+    "start": "ts-node server.ts",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/alireza4050/vebko-vision.git"
+  },
+  "author": "Alireza Asgharizadeh <alireza4050@gmail.com>",
+  "license": "UNLICENSED",
+  "bugs": {
+    "url": "https://github.com/alireza4050/vebko-vision/issues"
+  },
+  "homepage": "https://github.com/alireza4050/vebko-vision#readme",
+  "dependencies": {
+    "mqtt": "^5.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.4.5",
+    "ts-node": "^10.9.1"
+  }
+}

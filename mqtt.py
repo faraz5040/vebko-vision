@@ -1,12 +1,16 @@
 import random
+import json
+import base64
+import numpy as np
 from paho.mqtt import client as mqtt_client
 
 
-broker = "192.168.1.144"
+broker = "192.168.1.48"
 port = 1883
 username = "dwmuser"
 password = "dwmpass"
-topic = "dwm/#"
+# topic = "dwm/node/+/uplink/data"
+topic = "#"
 client_id = f"mqtt-{random.randint(0, 1000)}"
 
 
@@ -33,7 +37,27 @@ def connect_mqtt():
 
 def subscribe(client: mqtt_client.Client):
     def on_message(client, userdata, msg):
-        print(f"Received `{msg.payload.decode()}` from `{msg.topic}` topic")
+        payload = json.loads(msg.payload)
+
+        if "position" in payload:
+            pos = payload["position"]
+            del pos["quality"]
+            for dim in ("x", "y", "z"):
+                pos[dim] = round(float(pos[dim]), 2)
+            print(pos)
+        elif "data" in payload:
+            bytes = base64.b64decode(payload["data"])
+            count = bytes[0]
+            data = {
+                hex(
+                    int.from_bytes(bytes[1 + 6 * i : 3 + 6 * i], "little")
+                ): int.from_bytes(bytes[3 + 6 * i : 7 + 6 * i], "little")
+                for i in range(count)
+            }
+            print(f"node: {msg.topic[9:13]}, count: {count}, {data}")
+            print(data)
+        else:
+            print(f"Received `{payload}` from `{msg.topic}` topic")
 
     client.subscribe(topic)
     client.on_message = on_message

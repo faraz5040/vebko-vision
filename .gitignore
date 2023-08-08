@@ -1,3 +1,8 @@
+node_modules/
+**/dwm*/hex
+**/dwm*/Output
+**/dwm*/*.esSession
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

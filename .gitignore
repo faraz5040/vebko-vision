@@ -314,5 +314,11 @@ cython_debug/
 # Visual Studio Code
 .vscode/
 
+#Pycharm
+.idea/
+
 # Sample videos
 videos/
+
+#logs
+logs/

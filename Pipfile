@@ -6,6 +6,9 @@ name = "pypi"
 [packages]
 opencv-contrib-python = "*"
 paho-mqtt = "*"
+pandas = "*"
+keyboard = "*"
+openpyxl = "*"
 
 [dev-packages]
 

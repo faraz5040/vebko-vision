@@ -16,15 +16,13 @@ class TagTracker:
     def open_video(self, video_path: str):
         video = cv2.VideoCapture(video_path)
         if not video.isOpened():
-            self.message("Could not open video")
-            sys.exit(1)
+            self.message("Could not open video", exit=True)
 
         # Read first frame.
         ok, frame = video.read()
 
         if not ok:
-            self.message("Cannot read video file")
-            sys.exit(1)
+            self.message("Cannot read video file", exit=True)
 
         return frame
 
@@ -129,9 +127,11 @@ class TagTracker:
         #                                        translation_vector, camera_matrix, dist_coeffs)
         # print(box_2d)
 
-    def message(self, text: str):
+    def message(self, text: str, exit=False):
         print(text)
         cv2.putText(self.frame, text, *self.text_opts)
+        if exit:
+            sys.exit(1)
 
 
 def main():

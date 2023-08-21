@@ -9,6 +9,10 @@ paho-mqtt = "*"
 pandas = "*"
 keyboard = "*"
 openpyxl = "*"
+flask = "*"
+flask-restful = "*"
+flask-socketio = "*"
+eventlet = "*"
 
 [dev-packages]
 

@@ -7,8 +7,9 @@
  *
  */
 
-#include "dwm.h"
 #include <stdio.h>
+
+#include "dwm.h"
 
 /* Thread priority */
 #ifndef THREAD_APP_PRIO
@@ -26,10 +27,11 @@
       printf("err: line(%u) code(%u)", __LINE__, (err_code)); \
   } while (0)
 
-#define MSG_INIT                         \
-  "\n\n"                                 \
-  "App   :  dwm-range-iot\n"             \
-  "Built :  " __DATE__ " " __TIME__ "\n" \
+#define MSG_INIT                    \
+  "\n\n"                            \
+  "App   :  dwm-range-iot\n"        \
+  "Built :  " __DATE__ " " __TIME__ \
+  "\n"                              \
   "\n"
 
 uint16_t range_request = 1;
@@ -55,39 +57,41 @@ void on_dwm_evt(dwm_evt_t *p_evt) {
   uint8_t idx = 0;
 
   switch (p_evt->header.id) {
-  /* New location data */
-  case DWM_EVT_LOC_READY:
-    // Write count
-    memcpy(data_out + idx, &(p_evt->loc.anchors.dist.cnt), sizeof(p_evt->loc.anchors.dist.cnt));
-    idx = idx + sizeof(p_evt->loc.anchors.dist.cnt);
+    /* New location data */
+    case DWM_EVT_LOC_READY:
+      // Write count
+      memcpy(data_out + idx, &(p_evt->loc.anchors.dist.cnt),
+             sizeof(p_evt->loc.anchors.dist.cnt));
+      idx = idx + sizeof(p_evt->loc.anchors.dist.cnt);
 
-    // Write time
-    int time = dwm_systime_us_get();
-    memcpy(data_out + idx, &(time), sizeof(time));
-    idx = idx + sizeof(time);
+      // Write time
+      int time = dwm_systime_us_get();
+      memcpy(data_out + idx, &(time), sizeof(time));
+      idx = idx + sizeof(time);
 
-    for (i = 0; i < p_evt->loc.anchors.dist.cnt; ++i) {
-      // Write anchor address
-      memcpy(data_out + idx, &(p_evt->loc.anchors.dist.addr[i]), sizeof(p_evt->loc.anchors.dist.addr[i]));
-      idx = idx + sizeof(p_evt->loc.anchors.dist.addr[i]);
-      // Write distance
-      memcpy(data_out + idx, &(p_evt->loc.anchors.dist.dist[i]), sizeof(p_evt->loc.anchors.dist.dist[i]));
-      idx = idx + sizeof(p_evt->loc.anchors.dist.dist[i]);
-    }
+      for (i = 0; i < p_evt->loc.anchors.dist.cnt; ++i) {
+        // Write anchor address
+        memcpy(data_out + idx, &(p_evt->loc.anchors.dist.addr[i]),
+               sizeof(p_evt->loc.anchors.dist.addr[i]));
+        idx = idx + sizeof(p_evt->loc.anchors.dist.addr[i]);
+        // Write distance
+        memcpy(data_out + idx, &(p_evt->loc.anchors.dist.dist[i]),
+               sizeof(p_evt->loc.anchors.dist.dist[i]));
+        idx = idx + sizeof(p_evt->loc.anchors.dist.dist[i]);
+      }
 
-    dwm_usr_data_write(data_out, idx, false);
+      dwm_usr_data_write(data_out, idx, false);
 
-    // Send Ranges in IoT data
-    dwm_evt_listener_register(
-        DWM_EVT_LOC_READY | DWM_EVT_USR_DATA_SENT |
-            DWM_EVT_BH_INITIALIZED_CHANGED |
-            DWM_EVT_UWBMAC_JOINED_CHANGED,
-        NULL);
+      // Send Ranges in IoT data
+      dwm_evt_listener_register(DWM_EVT_LOC_READY | DWM_EVT_USR_DATA_SENT |
+                                    DWM_EVT_BH_INITIALIZED_CHANGED |
+                                    DWM_EVT_UWBMAC_JOINED_CHANGED,
+                                NULL);
 
-    break;
+      break;
 
-  default:
-    break;
+    default:
+      break;
   }
 }
 
@@ -124,8 +128,7 @@ void app_thread_entry(uint32_t data) {
   /* Register event callback */
   dwm_evt_listener_register(
       DWM_EVT_LOC_READY | DWM_EVT_USR_DATA_READY | DWM_EVT_USR_DATA_SENT |
-          DWM_EVT_BH_INITIALIZED_CHANGED |
-          DWM_EVT_UWBMAC_JOINED_CHANGED,
+          DWM_EVT_BH_INITIALIZED_CHANGED | DWM_EVT_UWBMAC_JOINED_CHANGED,
       NULL);
 
   // Read User NVM
@@ -187,15 +190,16 @@ void dwm_user_start(void) {
   int rv;
 
   dwm_shell_compile();
-  // Disabling ble by default as softdevice prevents debugging with breakpoints (due to priority)
+  // Disabling ble by default as softdevice prevents debugging with breakpoints
+  // (due to priority)
   dwm_ble_compile();
   dwm_le_compile();
   dwm_serial_spi_compile();
   dwm_serial_uart_compile();
 
   /* Create thread */
-  rv = dwm_thread_create(THREAD_APP_PRIO, app_thread_entry, (void *)NULL,
-      "app", THREAD_APP_STACK_SIZE, &hndl);
+  rv = dwm_thread_create(THREAD_APP_PRIO, app_thread_entry, (void *)NULL, "app",
+                         THREAD_APP_STACK_SIZE, &hndl);
   APP_ERR_CHECK(rv);
 
   /* Start the thread */
@@ -223,8 +227,7 @@ void config_tag(void) {
   cfg_tag.common.led_en = true;
   cfg_tag.common.enc_en = false;
 
-  if ((cfg.mode != DWM_MODE_TAG) ||
-      (cfg.stnry_en != cfg_tag.stnry_en) ||
+  if ((cfg.mode != DWM_MODE_TAG) || (cfg.stnry_en != cfg_tag.stnry_en) ||
       (cfg.loc_engine_en != cfg_tag.loc_engine_en) ||
       (cfg.low_power_en != cfg_tag.low_power_en) ||
       (cfg.meas_mode != cfg_tag.meas_mode) ||
@@ -232,27 +235,33 @@ void config_tag(void) {
       (cfg.common.uwb_mode != cfg_tag.common.uwb_mode) ||
       (cfg.common.ble_en != cfg_tag.common.ble_en) ||
       (cfg.common.led_en != cfg_tag.common.led_en)) {
-
     if (cfg.mode != DWM_MODE_TAG)
       printf("mode: get = %d, set = %d\n", cfg.mode, DWM_MODE_ANCHOR);
     if (cfg.stnry_en != cfg_tag.stnry_en)
       printf("acce: get = %d, set = %d\n", cfg.stnry_en, cfg_tag.stnry_en);
     if (cfg.loc_engine_en != cfg_tag.loc_engine_en)
-      printf("le  : get = %d, set = %d\n", cfg.loc_engine_en, cfg_tag.loc_engine_en);
+      printf("le  : get = %d, set = %d\n", cfg.loc_engine_en,
+             cfg_tag.loc_engine_en);
     if (cfg.low_power_en != cfg_tag.low_power_en)
-      printf("lp  : get = %d, set = %d\n", cfg.low_power_en, cfg_tag.low_power_en);
+      printf("lp  : get = %d, set = %d\n", cfg.low_power_en,
+             cfg_tag.low_power_en);
     if (cfg.meas_mode != cfg_tag.meas_mode)
       printf("meas: get = %d, set = %d\n", cfg.meas_mode, cfg_tag.meas_mode);
     if (cfg.common.fw_update_en != cfg_tag.common.fw_update_en)
-      printf("fwup: get = %d, set = %d\n", cfg.common.fw_update_en, cfg_tag.common.fw_update_en);
+      printf("fwup: get = %d, set = %d\n", cfg.common.fw_update_en,
+             cfg_tag.common.fw_update_en);
     if (cfg.common.uwb_mode != cfg_tag.common.uwb_mode)
-      printf("uwb : get = %d, set = %d\n", cfg.common.uwb_mode, cfg_tag.common.uwb_mode);
+      printf("uwb : get = %d, set = %d\n", cfg.common.uwb_mode,
+             cfg_tag.common.uwb_mode);
     if (cfg.common.ble_en != cfg_tag.common.ble_en)
-      printf("ble : get = %d, set = %d\n", cfg.common.ble_en, cfg_tag.common.ble_en);
+      printf("ble : get = %d, set = %d\n", cfg.common.ble_en,
+             cfg_tag.common.ble_en);
     if (cfg.common.enc_en != cfg_tag.common.enc_en)
-      printf("enc : get = %d, set = %d\n", cfg.common.enc_en, cfg_tag.common.enc_en);
+      printf("enc : get = %d, set = %d\n", cfg.common.enc_en,
+             cfg_tag.common.enc_en);
     if (cfg.common.led_en != cfg_tag.common.led_en)
-      printf("led : get = %d, set = %d\n", cfg.common.led_en, cfg_tag.common.led_en);
+      printf("led : get = %d, set = %d\n", cfg.common.led_en,
+             cfg_tag.common.led_en);
 
     APP_ERR_CHECK(rv = dwm_cfg_tag_set(&cfg_tag));
 

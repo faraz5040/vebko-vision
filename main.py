@@ -3,10 +3,9 @@ import sys
 import cv2
 import numpy as np
 
-
 def main():
     # Read the video from the specified path
-    video = cv2.VideoCapture("videos/aruco_image.mp4")
+    video = cv2.VideoCapture(1)
 
     # Exit if video not opened.
     if not video.isOpened():
@@ -37,35 +36,41 @@ def main():
         # Draw bounding box
         if ok:
             # Create the ArUco dictionary
-            # (in this part yoy should name all ot the markers that you have used)
             aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_100)
 
             # Creating the ArUco parameters
             aruco_params = cv2.aruco.DetectorParameters()
 
-            # Detecting ArUco markers in the image
+            # Detect ArUco markers in the image and return their corners and IDs
             corners, ids, _ = cv2.aruco.detectMarkers(frame, aruco_dict, parameters=aruco_params)
 
             if ids is not None:
                 # Draw the detected markers on the frame
                 cv2.aruco.drawDetectedMarkers(frame, corners, ids)
 
-                # Print the detected marker IDs and their corresponding corners
+                # Define image points and object points for camera calibration
+                """
+                this is dynamic image points which will be detected in the video with AruCo Markers
+                we have 4 points in the image, also its respective points in the room (real-world) that is called 
+                object points
+
+                """
                 image_points = np.zeros(shape=(4, 2))
-                # Print the detected marker IDs and their corresponding corners
+                object_points = np.array([[0, 0, 0], [70, 0, 0], [70, 50, 0], [0, 50, 0]], dtype=np.float64)
+
+                tag = None
                 for id, corner in zip(ids, corners):
-                    try:
-                        image_points[id - 1] = list(corner[0][id - 1][0])
-                    except:
-                        print('aruco tag not found')
+                    # Check if the ID is the Tag (ID 5)
+                    if id == [5]:
+                        tag = list(corner[0][0])
+                    else:
+                        try:
+                            # Store image points for non-tag markers
+                            image_points[id - 1] = list(corner[0][0])
+                        except:
+                            print(f'aruco tag {id} not found')
 
-                # Define the 2D and 3D points for the solvePnP function
-                # Modify image_points and object_points accordingly
-                image_points = np.array(image_points)
-                object_points = np.array([[0, 0, 0], [70, 0, 0], [0, 50, 0], [70, 50, 0]], dtype=np.float64)
-
-                # Define camera parameters (focal length, center, camera matrix, and distortion coefficients)
-                # Modify these parameters according to your camera setup
+                # Setup the Camera Matrix
                 size = frame.shape
                 focal_length = size[1]
                 center = (size[1] / 2, size[0] / 2)
@@ -75,21 +80,26 @@ def main():
                      [0, 0, 1]], dtype="double"
                 )
 
+                image_points = np.array(image_points)
                 dist_coeffs = np.zeros((4, 1))  # Assuming no lens distortion
+
+                # Solve for rotation and translation vectors using PnP
                 (success, rotation_vector, translation_vector) = cv2.solvePnP(object_points, image_points,
                                                                               camera_matrix, dist_coeffs,
                                                                               flags=cv2.SOLVEPNP_ITERATIVE)
-                if success:
-                    pass
-                    # TODO
 
-                    # Project the 3D point (x, y, z) onto the image plane for visualization
+                # Calculate the camera transformation matrix
+                Lcam = camera_matrix.dot(np.hstack((cv2.Rodrigues(rotation_vector)[0], translation_vector)))
 
-                    # (box_2d, jacobian) = cv2.projectPoints(box_3d, rotation_vector,
-                    #                                        translation_vector, camera_matrix, dist_coeffs)
-                    # print(box_2d)
-                else:
-                    print('Failed to Converge')
+                try:
+                    px, py = tag[0], tag[1]
+                    Z = 0
+                    # Calculate the tag's location in 3D space
+                    tag_loc = np.linalg.inv(np.hstack((Lcam[:, 0:2], np.array([[-1 * px], [-1 * py], [-1]])))).dot(
+                        (-Z * Lcam[:, 2] - Lcam[:, 3]))
+                    print("location of tag", tag_loc)
+                except:
+                    print("Tag not Found..")
 
                 # Show the frame with detected markers
                 cv2.imshow("Detected Markers", frame)
@@ -107,8 +117,6 @@ def main():
                 2,
             )
 
-        # Display tracker type on frame
-
         # Display FPS on frame
         cv2.putText(
             frame,
@@ -120,14 +128,13 @@ def main():
             2,
         )
 
-        # # Display the resulting frame with the bounding box and head pose estimation
+        # Display the resulting frame with the bounding box and head pose estimation
         cv2.imshow("Tracking", frame)
 
-        # Exit if ESC pressed
+        # Exit if ESC key is pressed
         k = cv2.waitKey(1) & 0xFF
         if k == 27:
             break
-
 
 if __name__ == "__main__":
     main()

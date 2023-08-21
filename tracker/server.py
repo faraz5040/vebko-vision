@@ -50,7 +50,7 @@ dwm = Dwm()
 @api.post("start")
 def start_recording_mqtt_data():
     try:
-        dwm.start()
+        dwm.start(on_message=lambda data: emit("log", data))
         return "started", 200
     except Exception:
         return "Can't connecto to MQTT server", 500

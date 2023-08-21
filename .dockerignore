@@ -1,0 +1,11 @@
+*
+!tracker/*.py
+!tracker/Pipfile*
+!web-panel/src/
+!web-panel/public/
+!web-panel/typings/
+!web-panel/*.json
+!web-panel/*.html
+!web-panel/*.ts
+!web-panel/*.js
+!web-panel/*.cjs

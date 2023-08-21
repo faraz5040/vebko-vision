@@ -37,7 +37,7 @@ class Dwm:
         self.locations: list[dict] = []
         self.distances: list[dict] = []
 
-    def start(self):
+    def start(self, on_message):
         self.client.on_message = self.on_message
         self.locations.clear()
         self.distances.clear()

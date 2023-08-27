@@ -4,12 +4,15 @@ from collections import namedtuple
 import json
 import os
 import random
-from typing import Literal
+import datetime
+from io import BytesIO
+from threading import Thread
 from paho.mqtt import client as mqtt_client
 import pandas as pd
 import keyboard
-import sys
+from config import config
 
+DEBUG = config["mqtt_debug"]
 
 DistTuple = namedtuple("AnchorDistance", ("AnchorId", "DistanceMillimeters"))
 
@@ -19,84 +22,93 @@ class Dwm:
         r"^dwm/node/(?P<node_id>[a-fA-F0-9]+)/uplink/(?P<message_type>location|data)$"
     )
 
-    def __init__(
-        self,
-        host="192.168.1.48",
-        username="dwmuser",
-        password="dwmpass",
-        port=1883,
-        listening_topics="dwm/#",
-    ):
+    def __init__(self, listening_topics="dwm/#"):
         self.client_id = f"mqtt-{random.randint(0, 1000)}"
-        self.client = mqtt_client.Client(self.client_id)
-        self.client.username_pw_set(username, password)
-        self.host = host
-        self.port = port
+        self.client = None
+        self.thread = None
         self.listening_topics = listening_topics
 
-        self.locations: list[dict] = []
+        self.positions: list[dict] = []
         self.distances: list[dict] = []
 
-    def start(self, on_message):
-        self.client.on_message = self.on_message
-        self.locations.clear()
+    def _start(self, on_message):
+        self.positions.clear()
         self.distances.clear()
-        self.client.connect(self.host, self.port)
+        self.client = mqtt_client.Client(self.client_id)
+        self.client.username_pw_set(config["mqtt_user"], config["mqtt_password"])
+        self.client.on_message = lambda *args: on_message(self.on_message(*args))
+        self.client.connect(config["mqtt_server"], config["mqtt_port"])
         self.client.subscribe(self.listening_topics)
         self.client.loop_start()
 
-    def end(self):
-        self.client.loop_stop()
-        self.client.unsubscribe(self.listening_topics)
-        self.client.disconnect()
-        return self.locations, self.distances
+    def start(self, on_message):
+        self.stop()
+        self.thread = Thread(target=self._start, args=(on_message,))
+        self.thread.run()
+
+    def stop(self):
+        if self.client is not None and self.client.is_connected():
+            self.client.loop_stop()
+            self.client.unsubscribe(self.listening_topics)
+            self.client.disconnect()
+
+        if self.thread is not None and self.thread.is_alive():
+            self.thread.join()
+        return self.merge_dataframes()
 
     def on_message(
         self, _client: mqtt_client.Client, _userdata, message: mqtt_client.MQTTMessage
     ):
+        if DEBUG:
+            print(f"Received `{message.payload}` from `{message.topic}` topic")
+
+        payload: dict = json.loads(message.payload)
         match = self.topic_re.fullmatch(message.topic)
 
         if match is None:
-            print(f"Received `{payload}` from `{message.topic}` topic")
             return
 
         node_id = match.group("node_id")
         message_type = match.group("message_type")
 
-        payload: dict = json.loads(message.payload)
-
         if message_type == "location":
-            handle_position_message(node_id, payload)
+            return self.handle_position_message(node_id, payload)
 
         if message_type == "data":
-            handle_data_message(node_id, payload)
+            return self.handle_data_message(node_id, payload)
 
     def handle_data_message(self, node_id, payload):
         bytes = base64.b64decode(payload["data"])
         count = bytes[0]
         timestamp = int.from_bytes(bytes[1:5], "little")
         bytes = bytes[5:]
-        dists_int = (parse_anchor_distance(bytes, 6 * i) for i in range(count))
-        dists = {hex(id): f"{dist}mm" for id, dist in dists_int}
-        print(f"node: {node_id}, count: {count}, {dists}, time (ms): {timestamp}")
+        dists = (self.parse_anchor_distance(bytes, 6 * i) for i in range(count))
 
-        self.distances.append(
-            {
-                "superFrameNumber": payload["superFrameNumber"],
-                "Tag": node_id,
-                "Number of Anchors": count,
-                "Time (ms)": timestamp,
-                **dists,
-            }
-        )
+        if DEBUG:
+            dists_fmt = {hex(id): f"{dist}mm" for id, dist in dists}
+            print(
+                f"node: {node_id}, count: {count}, {dists_fmt}, time (ms): {timestamp}"
+            )
+
+        row = {
+            "superFrameNumber": payload["superFrameNumber"],
+            "Tag": node_id,
+            "Number of Anchors": count,
+            "Time (ms)": timestamp,
+            **dists,
+        }
+
+        self.distances.append(row)
+        return row
 
     def handle_position_message(self, node_id, payload):
-        pos = payload["position"]
-        pos["superFrameNumber"] = payload["superFrameNumber"]
+        position = payload["position"]
+        position["superFrameNumber"] = payload["superFrameNumber"]
         for dim in ("x", "y", "z"):
-            pos[dim] = round(float(pos[dim]), 2)
-        pos["Tag"] = node_id
-        self.locations.append(pos)
+            position[dim] = round(float(position[dim]), 2)
+        position["Tag"] = node_id
+        self.positions.append(position)
+        return position
 
     def parse_anchor_distance(bytes: bytes, offset: int) -> DistTuple:
         # First 2 bytes
@@ -105,95 +117,56 @@ class Dwm:
         distance_millimiters = int.from_bytes(bytes[offset + 2 : offset + 6], "little")
         return DistTuple(anchor_id, distance_millimiters)
 
+    def merge_dataframes(self):
+        if len(self.positions) == 0 or len(self.distances) == 0:
+            return pd.DataFrame()
 
-def grouping_frame_tag(dataframe: pd.DataFrame):
-    pos_frame_grouped = dataframe.groupby("superFrameNumber")
-    pos_groups = pos_frame_grouped.groups
+        loc_df = pd.DataFrame(self.positions)
+        dst_df = pd.DataFrame(self.distances)
+        print(loc_df.columns)
+        print(dst_df.columns)
 
-    pos_frame_tag = []
-    for frame, indexes in pos_groups.items():
-        for ind in indexes:
-            pos_frame_tag.append(str(frame) + dataframe["Tag"].iloc[ind][-2:])
+        self.positions.clear()
+        self.distances.clear()
+        combined_df = pd.merge(loc_df, dst_df, how="outer", on=["superFrameNumber"])
+        combined_df = combined_df.loc[combined_df["time"] - combined_df["time2"] < 500]
+        combined_df.drop(["time2", "superFrameNumber"])
+        combined_df.index += 1
+        return combined_df
 
-    dataframe["frame_tag"] = pos_frame_tag
-    return dataframe
-
-
-# def main():
-#     global pos_df, data_df
-#     print("Press 'Esc' key to exit.")
-
-#     client = connect_mqtt()
-#     subscribe(client)
-#     client.loop_start()
-
-#     while True:
-#         if not keyboard.is_pressed("esc"):
-#             continue
-
-#         pos_df = grouping_frame_tag(pos_df)
-#         data_df = grouping_frame_tag(data_df)
-
-#         log = pd.merge(data_df, pos_df)
-#         log["Time (ms)"] = (
-#             log.groupby("Tag")["Time (ms)"].transform(lambda x: x - x.min()) / 1000
-#         )
-#         log.drop(columns=["superFrameNumber"], inplace=True)
-
-#         log.rename(
-#             columns={"x": "X", "y": "Y", "z": "Z", "quality": "Quality"},
-#             inplace=True,
-#         )
-#         log.index = log.index + 1
-
-#         num_tag = log["Tag"].nunique()
-#         num_anch = log["Number of Anchors"].iloc[0]
-#         rand_num = random.randint(1, 100000)
-
-#         file_name = f"log_{num_tag}_{num_anch}_{rand_num}.xlsx"
-#         outdir = "./logs"
-#         if not os.path.exists(outdir):
-#             os.mkdir(outdir)
-
-#         full_path = os.path.join(outdir, file_name)
-#         log.to_excel(full_path)
-#         print(log)
-#         print(file_name)
-#         client.unsubscribe("#")
-#         client.loop_stop()
-#         sys.exit()
+    def df_to_excel(df: pd.DataFrame):
+        in_memory_file = BytesIO()
+        xlwriter = pd.ExcelWriter(in_memory_file, engine="xlsxwriter")
+        df.to_excel(xlwriter)
+        xlwriter.close()
+        in_memory_file.seek(0)
+        return in_memory_file
 
 
-def handle_data_message(node_id, payload):
-    global data_df
-    bytes = base64.b64decode(payload["data"])
-    count = bytes[0]
-    timestamp = int.from_bytes(bytes[1:5], "little")
-    bytes = bytes[5:]
-    dists_int = (parse_anchor_distance(bytes, 6 * i) for i in range(count))
-    dists = {hex(id): f"{dist}mm" for id, dist in dists_int}
-    print(f"node: {node_id}, count: {count}, {dists}, time (ms): {timestamp}")
-    data_dict = {
-        "superFrameNumber": payload["superFrameNumber"],
-        "Tag": node_id,
-        "Number of Anchors": count,
-        "Time (ms)": timestamp,
-    }
-    data_dict.update(dists)
+def main():
+    print("Press 'Esc' key to exit.")
+    dwm = Dwm()
+    dwm.start(print)
 
-    data_df.append(data_dict)
-    # data_df = pd.concat([data_df, pd.DataFrame([data_dict])], ignore_index=True)
+    while True:
+        if not keyboard.is_pressed("esc"):
+            continue
 
-
-def handle_position_message(node_id, payload):
-    pos = payload["position"]
-    pos["superFrameNumber"] = payload["superFrameNumber"]
-    for dim in ("x", "y", "z"):
-        pos[dim] = round(float(pos[dim]), 2)
-    pos["Tag"] = node_id
-
-    pos_df = pd.concat([pos_df, pd.DataFrame([pos])], ignore_index=True)
+        log = dwm.stop()
+        num_tag = log["Tag"].nunique()
+        num_anch = log["Number of Anchors"].iloc[0]
+        file_name = (
+            f"log_{datetime.datetime.now().isoformat()}_{num_tag}_{num_anch}.xlsx"
+        )
+        outdir = "./logs"
+        if not os.path.exists(outdir):
+            os.mkdir(outdir)
+        full_path = os.path.join(outdir, file_name)
+        log.to_excel(full_path)
+        print(log)
+        print(file_name)
+        break
 
 
-# if __name__ == "__main__":
-#     main()
+if __name__ == "__main__":
+    main()

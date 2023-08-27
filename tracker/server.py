@@ -1,16 +1,19 @@
+import eventlet
 import datetime
-from io import BytesIO
 import re
-import pandas as pd
 from flask import (
     Blueprint,
     Flask,
+    copy_current_request_context,
     send_file,
     request,
 )
 from flask_socketio import SocketIO, emit
+from config import config
 from dwm import Dwm
+from vision import TagTracker
 
+DEBUG = config["flask_debug"]
 
 app = Flask(__name__, static_url_path="/")
 socketio = SocketIO(app)
@@ -19,17 +22,19 @@ socketio = SocketIO(app)
 static_file_re = re.compile(r"\.(?:js|css|html|svg|png|jpe?g|ttf|woff2?|json)$")
 
 
+def send_frame(frame):
+    pass
+
+
 @app.get("/")
 def index():
-    print("index")
     return app.send_static_file("index.html")
 
 
-# Any find in assets subtree or files directly inside root folder
+# Any file in assets subtree or files directly inside root folder
 @app.get("/<string:filename>")
 @app.get("/assets/<path:filename>")
 def static_proxy(filename):
-    print("static")
     if request.path.startswith("/assets/"):
         filename = f"assets/{filename}"
     if not static_file_re.search(filename):
@@ -39,54 +44,48 @@ def static_proxy(filename):
 
 @app.get("/<path:path>")
 def spa_not_found_redirect(path):
-    print("catched:", path)
     return app.send_static_file("index.html")
 
 
 api = Blueprint("API", __name__, url_prefix="/api")
+
 dwm = Dwm()
+tag_tracker = TagTracker()
 
 
 @api.post("start")
 def start_recording_mqtt_data():
     try:
-        dwm.start(on_message=lambda data: emit("log", data))
+
+        @copy_current_request_context
+        def start_dwm():
+            dwm.start(on_message=lambda data: emit("dwm-message", data))
+            tag_tracker.start(
+                on_location=lambda loc: emit("vision-location", loc),
+                on_frame=send_frame,
+            )
+
+        eventlet.spawn(start_dwm)
+
         return "started", 200
+
     except Exception:
         return "Can't connecto to MQTT server", 500
 
 
 @api.post("end")
 def end_recording_mqtt_data():
-    return "ended"
-    # _, distances = dwm.end()
-    # loc_df = pd.DataFrame(locations)
-    dst_df = pd.DataFrame(distances)
-
-    in_memory_file = BytesIO()
-    xlwriter = pd.ExcelWriter(in_memory_file, engine="xlsxwriter")
-    dst_df.to_excel(xlwriter)
-    xlwriter.save()
-    xlwriter.close()
-    in_memory_file.seek(0)
-
-    now = datetime.datetime.now().isoformat()
+    tag_tracker.stop()
+    df = dwm.stop()
+    now = datetime.datetime.now().isoformat(timespec="seconds").replace(":", "_")
     return send_file(
-        in_memory_file.read(),
-        # mimetype="xlsx",
+        Dwm.df_to_excel(df),
         download_name=f"distance-log-{now}.xlsx",
         as_attachment=True,
     )
-    # response = make_response(in_memory_file.read())
-    # response.headers.set(
-    #     "Content-Type",
-    #     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    # ),
-    # response.headers.set("Content-Disposition", "attachment; filename=myfile.xlsx")
-    # return response
 
 
 app.register_blueprint(api)
 
 if __name__ == "__main__":
-    socketio.run(app, debug=True)
+    socketio.run(app, debug=DEBUG)

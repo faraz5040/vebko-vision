@@ -13,6 +13,11 @@ flask = "*"
 flask-restful = "*"
 flask-socketio = "*"
 eventlet = "*"
+environs = "*"
+imutils = "*"
+argparse = "*"
+frozendict = "*"
+xlsxwriter = "*"
 
 [dev-packages]
 

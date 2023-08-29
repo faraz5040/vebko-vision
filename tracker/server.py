@@ -16,14 +16,10 @@ from vision import TagTracker
 DEBUG = config["flask_debug"]
 
 app = Flask(__name__, static_url_path="/")
-socketio = SocketIO(app)
+socketio = SocketIO(app, async_mode="eventlet")
 
 
 static_file_re = re.compile(r"\.(?:js|css|html|svg|png|jpe?g|ttf|woff2?|json)$")
-
-
-def send_frame(frame):
-    pass
 
 
 @app.get("/")
@@ -49,7 +45,7 @@ def spa_not_found_redirect(path):
 
 api = Blueprint("API", __name__, url_prefix="/api")
 
-dwm = Dwm()
+dwm: Dwm | None = None
 tag_tracker = TagTracker()
 
 
@@ -59,14 +55,23 @@ def start_recording_mqtt_data():
 
         @copy_current_request_context
         def start_dwm():
-            dwm.start(on_message=lambda data: emit("dwm-message", data))
+            global dwm
+            if dwm is None:
+                dwm = Dwm()
+            dwm.start(
+                on_message=lambda data: emit(
+                    "dwm-message", data, namespace="/", broadcast=True
+                )
+            )
             tag_tracker.start(
                 on_location=lambda loc: emit("vision-location", loc),
-                on_frame=send_frame,
+                on_frame=lambda frame: emit(
+                    "vision-frame", frame, namespace="/", broadcast=True
+                ),
             )
 
         eventlet.spawn(start_dwm)
-
+        emit("x")
         return "started", 200
 
     except Exception:
@@ -76,13 +81,17 @@ def start_recording_mqtt_data():
 @api.post("end")
 def end_recording_mqtt_data():
     tag_tracker.stop()
-    df = dwm.stop()
-    now = datetime.datetime.now().isoformat(timespec="seconds").replace(":", "_")
-    return send_file(
-        Dwm.df_to_excel(df),
-        download_name=f"distance-log-{now}.xlsx",
-        as_attachment=True,
-    )
+    global dwm
+    if dwm is not None:
+        df = dwm.stop()
+        now = datetime.datetime.now().isoformat(timespec="seconds").replace(":", "_")
+        return send_file(
+            Dwm.df_to_excel(df),
+            download_name=f"distance-log-{now}.xlsx",
+            as_attachment=True,
+        )
+    else:
+        return "", 200
 
 
 app.register_blueprint(api)

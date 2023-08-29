@@ -13,6 +13,7 @@ import keyboard
 from config import config
 
 DEBUG = config["mqtt_debug"]
+is_main = __name__ == "__main__"
 
 DistTuple = namedtuple("AnchorDistance", ("AnchorId", "DistanceMillimeters"))
 
@@ -37,6 +38,7 @@ class Dwm:
         self.client = mqtt_client.Client(self.client_id)
         self.client.username_pw_set(config["mqtt_user"], config["mqtt_password"])
         self.client.on_message = lambda *args: on_message(self.on_message(*args))
+
         self.client.connect(config["mqtt_server"], config["mqtt_port"])
         self.client.subscribe(self.listening_topics)
         self.client.loop_start()
@@ -168,5 +170,5 @@ def main():
         break
 
 
-if __name__ == "__main__":
+if is_main:
     main()

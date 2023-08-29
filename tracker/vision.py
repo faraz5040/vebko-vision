@@ -4,7 +4,6 @@ from typing import Any, Callable, Literal
 import cv2
 import numpy as np
 import numpy.typing as npt
-from environs import Env
 from config import config
 
 is_interactive = __name__ == "__main__"
@@ -18,7 +17,7 @@ class TagTracker:
     frame: npt.NDArray[np.uint8]
     video: cv2.VideoCapture
     on_location: Callable[[Vec3Row], Any] | None
-    on_frame: Callable[[npt.NDArray[np.int8]], Any] | None
+    on_frame: Callable[[bytes], Any] | None
 
     def __init__(self, video_path=config["video_path"]):
         self.on_location = None
@@ -55,10 +54,10 @@ class TagTracker:
     def start(
         self,
         on_location: Callable[[Vec3Row], Any] | None = None,
-        on_frame: Callable[[npt.NDArray[np.int8]], Any] | None = None,
+        on_frame: Callable[[bytes], Any] | None = None,
     ):
         self.on_location = on_location
-        self.on_location = on_frame
+        self.on_frame = on_frame
         self.stop()
         self._stop = False
         self._loop_thread = Thread(target=self._loop)
@@ -79,6 +78,13 @@ class TagTracker:
                 break
 
             self.process_frame()
+
+            if callable(self.on_frame):
+                ok, jpg = cv2.imencode(".jpg", self.frame)
+                if ok:
+                    self.on_frame(jpg.tobytes())
+                else:
+                    self.message("Failed to encode frame as JPEG")
 
             # Exit if ESC pressed
             if is_interactive:
@@ -147,7 +153,13 @@ class TagTracker:
             return self.message("Error calculating moving tag object point")
 
         if callable(self.on_location):
-            self.on_location(moving_tag_object_point)
+            if not is_interactive:
+                from __main__ import app
+
+                with app.app_context():
+                    print("emitting")
+                    self.on_location(moving_tag_object_point)
+
         self.message(f"Location of moving tag {moving_tag_object_point}")
 
     def aruco(self):

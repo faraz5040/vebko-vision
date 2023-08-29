@@ -1,11 +1,13 @@
 <template>
   <VContainer class="fill-height">
     <VResponsive class="align-center text-center fill-height">
-      <div class="text-body-2 font-weight-light mb-n1">دستاوردی از وبکو</div>
+      <!-- <div class="text-body-2 font-weight-light mb-n1">دستاوردی از وبکو</div> -->
 
-      <h1 class="text-h2 font-weight-bold">سامانه جانما</h1>
+      <!-- <h1 class="text-h2 font-weight-bold">سامانه جانما</h1> -->
 
       <div class="py-14" />
+
+      <img :src="frameDataUrl" alt="Camera video output" />
 
       <VVirtualScroll :height="300" :items="dwmLogs">
         <template #default="{ item }">
@@ -50,8 +52,13 @@ interface DwmLog {
 
 const started = ref(false);
 const loading = ref(false);
+const frameDataUrl = ref('');
 const dwmLogs = ref([] as DwmLog[]);
-const eventName = 'dwm-message' as const;
+const socketEvents = Object.freeze({
+  dwmMessage: 'dwm-message',
+  cameraLocation: 'vision-location',
+  cameraFrame: 'vision-frame',
+});
 
 function onMessage(data: unknown) {
   console.log(data);
@@ -75,20 +82,27 @@ async function handleClick() {
 
   if (started.value) {
     socket.connect();
-    socket.on(eventName, onMessage);
+    socket.on(socketEvents.dwmMessage, onMessage);
+    socket.on(socketEvents.cameraFrame, (frameBytes) => {
+      const blob = new Blob([frameBytes], { type: 'image/jpeg' });
+      frameDataUrl.value = URL.createObjectURL(blob);
+    });
+    socket.on(socketEvents.cameraLocation, (loc) => {
+      console.log(loc);
+    });
   } else {
-    socket.off(eventName, onMessage);
+    socket.offAny();
     socket.disconnect();
   }
 
   // Download file
   if (endpoint == 'end') {
     const fileNameRegex =
-      /filename[^;=\n]*=((?<quote>['"])(?<f1>.*?)\k<quote>|(?<f2>[^;\n]*))/;
-    const contentDisposition =
-      response.headers.get('Content-Disposition') ?? '';
+      /filename[^\n;=]*=((?<quote>["'])(?<f1>.*?)\k<quote>|(?<f2>[^\n;]*))/;
+    const contentDisposition = response.headers.get('Content-Disposition');
+    if (!contentDisposition) return;
     const groups = fileNameRegex.exec(contentDisposition)?.groups;
-    const fileName = groups?.f1 || groups?.f2 || '';
+    const fileName = groups?.f1 ?? groups?.f2 ?? '';
     const blob = await response.blob();
     const file = fileName ? new File([blob], fileName) : blob;
     window.location.assign(URL.createObjectURL(file));

@@ -26,7 +26,7 @@ class TagTracker:
             self.message("Cannot read video file")
             sys.exit(1)
 
-        return fra
+        return frame
 
     def run(self):
         while True:

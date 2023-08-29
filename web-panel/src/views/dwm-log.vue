@@ -68,6 +68,7 @@ function onMessage(data: unknown) {
 
 const socket = io('/api', { autoConnect: false });
 
+
 async function handleClick() {
   const endpoint = started.value ? 'end' : 'start';
 
@@ -82,8 +83,10 @@ async function handleClick() {
 
   if (started.value) {
     socket.connect();
+    socket.on('connect', () => console.log(socket.id))
     socket.on(socketEvents.dwmMessage, onMessage);
     socket.on(socketEvents.cameraFrame, (frameBytes) => {
+      console.log('frame:', frameBytes)
       const blob = new Blob([frameBytes], { type: 'image/jpeg' });
       frameDataUrl.value = URL.createObjectURL(blob);
     });

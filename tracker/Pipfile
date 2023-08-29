@@ -18,6 +18,8 @@ imutils = "*"
 argparse = "*"
 frozendict = "*"
 xlsxwriter = "*"
+uwsgi = "*"
+flask-executor = "*"
 
 [dev-packages]
 

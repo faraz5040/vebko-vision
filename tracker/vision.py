@@ -153,12 +153,7 @@ class TagTracker:
             return self.message("Error calculating moving tag object point")
 
         if callable(self.on_location):
-            if not is_interactive:
-                from __main__ import app
-
-                with app.app_context():
-                    print("emitting")
-                    self.on_location(moving_tag_object_point)
+            self.on_location(moving_tag_object_point)
 
         self.message(f"Location of moving tag {moving_tag_object_point}")
 

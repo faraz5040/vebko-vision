@@ -1,4 +1,4 @@
-import eventlet
+# import eventlet
 import datetime
 import re
 from flask import (
@@ -8,16 +8,19 @@ from flask import (
     send_file,
     request,
 )
+# from uwsgidecorators import thread
+from flask_executor import Executor
 from flask_socketio import SocketIO, emit
 from config import config
-from dwm import Dwm
+
+# from dwm import Dwm
 from vision import TagTracker
 
 DEBUG = config["flask_debug"]
 
 app = Flask(__name__, static_url_path="/")
 socketio = SocketIO(app, async_mode="eventlet")
-
+executor = Executor(app)
 
 static_file_re = re.compile(r"\.(?:js|css|html|svg|png|jpe?g|ttf|woff2?|json)$")
 
@@ -45,7 +48,7 @@ def spa_not_found_redirect(path):
 
 api = Blueprint("API", __name__, url_prefix="/api")
 
-dwm: Dwm | None = None
+# dwm = Dwm()
 tag_tracker = TagTracker()
 
 
@@ -53,45 +56,46 @@ tag_tracker = TagTracker()
 def start_recording_mqtt_data():
     try:
 
-        @copy_current_request_context
+        # @copy_current_request_context
+        # @thread
         def start_dwm():
-            global dwm
-            if dwm is None:
-                dwm = Dwm()
-            dwm.start(
-                on_message=lambda data: emit(
-                    "dwm-message", data, namespace="/", broadcast=True
-                )
-            )
+            # dwm.start(
+            #     on_message=lambda data: socketio.emit(
+            #         "dwm-message", data, namespace="/", broadcast=True
+            #     )
+            # )
             tag_tracker.start(
                 on_location=lambda loc: emit("vision-location", loc),
-                on_frame=lambda frame: emit(
-                    "vision-frame", frame, namespace="/", broadcast=True
-                ),
+                # on_frame=lambda frame: emit(
+                #     "vision-frame", frame, namespace="/", broadcast=True
+                # ),
             )
+            
+        executor.submit(start_dwm)
+        # emit('vision-location', {'hey': 'hi'})
 
-        eventlet.spawn(start_dwm)
-        emit("x")
+        # eventlet.spawn(start_dwm)
         return "started", 200
 
-    except Exception:
+    except Exception as e:
+        print(e)
         return "Can't connecto to MQTT server", 500
 
 
 @api.post("end")
 def end_recording_mqtt_data():
     tag_tracker.stop()
-    global dwm
-    if dwm is not None:
-        df = dwm.stop()
-        now = datetime.datetime.now().isoformat(timespec="seconds").replace(":", "_")
-        return send_file(
-            Dwm.df_to_excel(df),
-            download_name=f"distance-log-{now}.xlsx",
-            as_attachment=True,
-        )
-    else:
-        return "", 200
+    return "", 200
+    # df = dwm.stop()
+    # if  df.empty:
+    #     return "", 200
+
+    # now = datetime.datetime.now().isoformat(timespec="seconds").replace(":", "_")
+    # return send_file(
+    #     Dwm.df_to_excel(df),
+    #     download_name=f"distance-log-{now}.xlsx",
+    #     as_attachment=True,
+    # )
 
 
 app.register_blueprint(api)

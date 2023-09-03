@@ -1,9 +1,11 @@
+import asyncio
+import inspect
 import sys
-from threading import Thread
 from typing import Any, Callable, Literal
 import cv2
 import numpy as np
 import numpy.typing as npt
+from typing import TypedDict
 from config import config
 
 is_interactive = __name__ == "__main__"
@@ -11,6 +13,12 @@ DEBUG = config["vision_debug"]
 
 Vec3Col = tuple[tuple[float], tuple[float], tuple[float]]
 Vec3Row = tuple[float, float, float]
+
+
+class Vec3(TypedDict):
+    x: float
+    y: float
+    z: float
 
 
 class TagTracker:
@@ -27,7 +35,12 @@ class TagTracker:
         self.video_path = video_path
         self.video = None
         self.frame = None
-        self.text_opts = ((100, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 0, 255), 2)
+        self.frame_text_count = 0
+        self.text_opts = {
+            "error": (cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 0, 255), 2),
+            "success": (cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 255, 0), 2),
+            "info": (cv2.FONT_HERSHEY_SIMPLEX, 0.75, (255, 0, 0), 2),
+        }
         # Define id and position of real 3D points of fixed ArUco markers used for solving PnP problem
         self.fixed_marker_3d_top_lefts: dict[int, Vec3Row] = {
             1: (0, 0, 0),
@@ -44,73 +57,79 @@ class TagTracker:
             self.message(f"Could not open video: '{self.video_path}'", exit=True)
 
         # Read first frame.
-        ok, frame = video.read()
+        ok, _ = video.read()
 
         if not ok:
             self.message("Cannot read video file", exit=True)
 
-        return video
+        self.video = video
 
-    def start(
+    async def start(
         self,
         on_location: Callable[[Vec3Row], Any] | None = None,
         on_frame: Callable[[bytes], Any] | None = None,
     ):
+        if self.video is None:
+            self.open_video()
+        print("cam start")
         self.on_location = on_location
         self.on_frame = on_frame
-        self.stop()
         self._stop = False
-        self._loop_thread = Thread(target=self._loop)
-        self._loop_thread.run()
-
-    def _loop(self):
-        self.video = self.open_video()
-
         while not self._stop:
-            # Start timer to measure processing time
-            start_time = cv2.getTickCount()
+            await self._loop()
 
-            # Read a new frame
-            ok, self.frame = self.video.read()
+    async def _loop(self):
+        # Start timer to measure processing time
+        start_time = cv2.getTickCount()
+        self.frame_text_count = 0
 
-            # Break the loop when we reach the end of the video
-            if not ok:
-                break
+        # Read a new frame
+        ok, self.frame = self.video.read()
 
-            self.process_frame()
+        # Break the loop when we reach the end of the video
+        if not ok:
+            self._stop = True
+            return
 
-            if callable(self.on_frame):
-                ok, jpg = cv2.imencode(".jpg", self.frame)
-                if ok:
-                    self.on_frame(jpg.tobytes())
-                else:
-                    self.message("Failed to encode frame as JPEG")
+        location = await self.process_frame()
 
+        if callable(self.on_frame):
+            ok, jpg = cv2.imencode(".jpg", self.frame)
+            if ok:
+                ret = self.on_frame({"frame": jpg.tobytes(), "location": location})
+                if inspect.isawaitable(ret):
+                    await ret
+            else:
+                self.message("Failed to encode frame as JPEG")
+
+        if is_interactive:
             # Exit if ESC pressed
-            if is_interactive:
-                k = cv2.waitKey(1) & 0xFF
-                if k == 27:
-                    break
+            k = cv2.waitKey(1) & 0xFF
+            if k == 27:
+                self._stop = True
+                return
 
-            # Calculate Frames per second (FPS)
-            end_time = cv2.getTickCount()
-            ticks_past = end_time - start_time
-            fps = cv2.getTickFrequency() / ticks_past
-            self.message(f"FPS : {int(fps)}")
-            if is_interactive:
-                cv2.imshow("Tracking", self.frame)
+        # Calculate Frames per second (FPS)
+        end_time = cv2.getTickCount()
+        ticks_past = end_time - start_time
+        fps = cv2.getTickFrequency() / ticks_past
+        self.message(f"FPS : {int(fps)}", type="success")
+        if is_interactive:
+            cv2.imshow("Tracking", self.frame)
 
     def stop(self):
         self._stop = True
-        if self._loop_thread is not None and self._loop_thread.is_alive():
-            self._loop_thread.join()
+        if self.video is not None:
+            self.video.release()
 
-    def process_frame(self) -> None:
+    async def process_frame(self) -> Vec3 | None:
         # Get Marker Points bounding box
         ok, marker_corners = self.aruco()
 
         if not ok:
             return self.message("No ArUco markers detected")
+
+        await asyncio.sleep(0)
 
         moving_tag_image_point = next(
             (
@@ -129,7 +148,8 @@ class TagTracker:
         )
 
         if len(fixed_image_object_point_pairs) < 4 or moving_tag_image_point is None:
-            return self.message("Cant detect required markers")
+            self.message("Cant detect required markers")
+            return
 
         ok, rotation_vector, translation_vector = self.solve_3d_to_2d_transform(
             object_points=np.array(
@@ -145,6 +165,8 @@ class TagTracker:
         if not ok:
             return self.message("Failed to Converge")
 
+        await asyncio.sleep(0)
+
         ok, moving_tag_object_point = self.calc_3d_point_from_image(
             rotation_vector, translation_vector, moving_tag_image_point, z=0
         )
@@ -152,10 +174,12 @@ class TagTracker:
         if not ok:
             return self.message("Error calculating moving tag object point")
 
-        if callable(self.on_location):
-            self.on_location(moving_tag_object_point)
+        await asyncio.sleep(0)
 
-        self.message(f"Location of moving tag {moving_tag_object_point}")
+        self.message(f"Location of moving tag {moving_tag_object_point}", type="info")
+
+        x, y, z = moving_tag_object_point
+        return Vec3(x=x, y=y, z=z)
 
     def aruco(self):
         # Create the ArUco dictionary
@@ -248,15 +272,20 @@ class TagTracker:
         except:
             return False, None
 
-    def message(self, text: str, exit=False):
+    def message(self, text: str, type="error", exit=False):
         if DEBUG:
             print(text)
-        if is_interactive and self.frame is not None:
-            cv2.putText(self.frame, text, *self.text_opts)
+        if self.frame is not None:
+            self.frame_text_count += 1
+            position = (100, 80 * self.frame_text_count)
+            cv2.putText(self.frame, text, position, *self.text_opts[type])
         if exit:
-            sys.exit(1)
+            if is_interactive:
+                sys.exit(1)
+            else:
+                raise Exception(text)
 
 
 if is_interactive:
     tag_tracker = TagTracker()
-    tag_tracker.start()
+    asyncio.run(tag_tracker.start())

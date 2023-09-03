@@ -5,21 +5,20 @@ name = "pypi"
 
 [packages]
 opencv-contrib-python = "*"
-paho-mqtt = "*"
 pandas = "*"
-keyboard = "*"
-openpyxl = "*"
-flask = "*"
-flask-restful = "*"
-flask-socketio = "*"
 eventlet = "*"
 environs = "*"
-imutils = "*"
 argparse = "*"
 frozendict = "*"
 xlsxwriter = "*"
-uwsgi = "*"
-flask-executor = "*"
+fastapi-socketio = "*"
+fastapi = "*"
+uvicorn = {version = "*", extras = ["standard"]}
+python-socketio = "*"
+websockets = "*"
+aiomqtt = "*"
+setuptools = "*"
+pynput = "*"
 
 [dev-packages]
 

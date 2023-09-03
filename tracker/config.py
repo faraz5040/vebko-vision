@@ -38,7 +38,7 @@ ap.add_argument(
     default="/dev/video0",
     help="video source read by image tracker",
 )
-ap.add_argument("--flask-debug", action=argparse.BooleanOptionalAction)
+ap.add_argument("--api-debug", action=argparse.BooleanOptionalAction)
 ap.add_argument("--vision-debug", action=argparse.BooleanOptionalAction)
 ap.add_argument("--mqtt-debug", action=argparse.BooleanOptionalAction)
 
@@ -51,7 +51,7 @@ class Config(TypedDict):
     mqtt_user: str
     mqtt_password: str
     video_path: str
-    flask_debug: bool
+    api_debug: bool
     vision_debug: bool
     mqtt_debug: bool
 
@@ -64,7 +64,7 @@ config: Config = frozendict(
         "mqtt_password": env.str("MQTT_PASSWORD", args.mqtt_password),
         "mqtt_debug": env.bool("MQTT_DEBUG", args.mqtt_debug),
         "video_path": env.str("VIDEO_PATH", args.video_path),
-        "flask_debug": env.bool("FLASK_DEBUG", args.flask_debug),
+        "api_debug": env.bool("API_DEBUG", args.api_debug),
         "vision_debug": env.bool("VISION_DEBUG", args.vision_debug),
     }
 )

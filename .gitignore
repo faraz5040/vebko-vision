@@ -1,8 +1,11 @@
 # Visual Studio Code
 .vscode/
 
-#Pycharm
+# IntelliJ IDEA
 .idea/
 
-#logs
+# Logs
 logs/
+
+# Temporary files
+tmp/

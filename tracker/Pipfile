@@ -19,6 +19,7 @@ websockets = "*"
 aiomqtt = "*"
 setuptools = "*"
 pynput = "*"
+janus = "*"
 
 [dev-packages]
 

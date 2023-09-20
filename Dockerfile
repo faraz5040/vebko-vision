@@ -19,4 +19,4 @@ RUN pipenv install
 COPY --from=build --chown=node:node web-panel/dist ./static
 COPY tracker .
 
-CMD [ "pipenv", "run" , "python", "server.py"]
+CMD [ "pipenv", "run" , "uvicorn", "server:app", "--workers", "4"]

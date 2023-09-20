@@ -49,7 +49,7 @@
               :loading="loading"
               @click="handleClick"
             >
-              <VIcon icon="mdi-speedometer" size="large" start />
+              <VIcon icon="$speedometer" size="large" start />
 
               {{ started ? 'پایان' : 'آغاز' }}
             </VBtn>

@@ -31,10 +31,12 @@
   "App   :  dwm-range-iot\n"             \
   "Built :  " __DATE__ " " __TIME__ "\n" \
   "\n"
-
+  
 uint16_t range_request = 1;
 uint16_t cnt_data_out = 0;
 
+//uint16_t tagger = true;
+  
 /**
  * Event callback
  *
@@ -44,6 +46,9 @@ void on_dwm_evt(dwm_evt_t *p_evt) {
   uint8_t len;
   uint8_t i;
   uint16_t reg;
+  uint16_t static cnt_data_out = 0;
+  //uint16_t static to_tag = 0;
+
 
   extern void *uwb_get_if(int);
 
@@ -53,10 +58,21 @@ void on_dwm_evt(dwm_evt_t *p_evt) {
   uint8_t data_in[34] = {0};
   // Current Idc to store in data
   uint8_t idx = 0;
-
+  
+  //if (to_tag == 0){
+  //  config_anchor();
+  //}
+  //else {
+  //  config_tag();
+  //}
+  
+  //config_anchor();
+  
   switch (p_evt->header.id) {
   /* New location data */
   case DWM_EVT_LOC_READY:
+
+
     // Write count
     memcpy(data_out + idx, &(p_evt->loc.anchors.dist.cnt), sizeof(p_evt->loc.anchors.dist.cnt));
     idx = idx + sizeof(p_evt->loc.anchors.dist.cnt);
@@ -73,7 +89,7 @@ void on_dwm_evt(dwm_evt_t *p_evt) {
       // Write distance
       memcpy(data_out + idx, &(p_evt->loc.anchors.dist.dist[i]), sizeof(p_evt->loc.anchors.dist.dist[i]));
       idx = idx + sizeof(p_evt->loc.anchors.dist.dist[i]);
-    }
+    }  
 
     dwm_usr_data_write(data_out, idx, false);
 
@@ -86,6 +102,23 @@ void on_dwm_evt(dwm_evt_t *p_evt) {
 
     break;
 
+    case DWM_EVT_USR_DATA_READY:
+		len = p_evt->header.len - sizeof(dwm_evt_hdr_t);
+		if (len <= 0)
+                    break;
+                dwm_usr_data_read(data_in,sizeof(p_evt->header.len));
+                /*If 0x0f sent on broker, will send range within iot_data*/
+                if (data_in[0] == 255)
+                {
+                  config_tag();
+                }
+                else if (data_in[0] == 10)
+                {
+                  config_anchor();
+                }
+
+          break;
+
   default:
     break;
   }
@@ -96,6 +129,7 @@ void on_dwm_evt(dwm_evt_t *p_evt) {
  *
  * @param[in] data  Pointer to user data
  */
+
 void app_thread_entry(uint32_t data) {
   dwm_cfg_t cfg;
   uint8_t i2cbyte;
@@ -105,15 +139,14 @@ void app_thread_entry(uint32_t data) {
   uint8_t label_len = DWM_LABEL_LEN_MAX;
   uint8_t buf[DWM_NVM_USR_DATA_LEN_MAX];
   uint8_t len;
-  dwm_uwb_cfg_t uwb_cfg;
+  //dwm_uwb_cfg_t uwb_cfg;
+  
 
-  config_tag();
-
-  /* Initial message */
+    /* Initial message */
   printf(MSG_INIT);
 
   /* Get node configuration */
-  APP_ERR_CHECK(dwm_cfg_get(&cfg));
+  //APP_ERR_CHECK(dwm_cfg_get(&cfg));
 
   /* Update rate set to 1 second, stationary update rate set to 5 seconds */
   APP_ERR_CHECK(dwm_upd_rate_set(10, 1));
@@ -165,7 +198,7 @@ void app_thread_entry(uint32_t data) {
   }
 
   while (1) {
-    /* Thread loop */
+    /* Thread loop */   
     rv = dwm_evt_wait(&evt);
 
     if (rv != DWM_OK) {
@@ -261,3 +294,88 @@ void config_tag(void) {
   }
   printf("dwm_cfg_tag_set(&cfg_tag):\t\t\t%s\n", "pass");
 }
+
+
+void config_anchor(void){
+	int rv;
+	dwm_cfg_t cfg;
+	dwm_cfg_anchor_t cfg_an;
+
+	/* Get node configuration */
+	APP_ERR_CHECK(dwm_cfg_get(&cfg));
+
+	/* Configure device as Anchor */
+	cfg_an.initiator = 1;
+	cfg_an.bridge = 0;
+	cfg_an.common.enc_en = 0;
+	cfg_an.common.led_en = 0;
+	cfg_an.common.ble_en = 1;
+	cfg_an.common.fw_update_en = 0;
+	cfg_an.common.uwb_mode = DWM_UWB_MODE_ACTIVE;
+
+
+	if ((cfg.mode != DWM_MODE_ANCHOR) ||
+		(cfg.initiator     != cfg_an.initiator) ||
+		(cfg.bridge 	   != cfg_an.bridge) ||
+		(cfg.common.fw_update_en != cfg_an.common.fw_update_en) ||
+		(cfg.common.uwb_mode     != cfg_an.common.uwb_mode) ||
+		(cfg.common.ble_en != cfg_an.common.ble_en) ||
+		//(cfg.common.enc_en != cfg_an.common.enc_en) ||
+		(cfg.common.led_en != cfg_an.common.led_en)
+		) {
+
+		if(cfg.mode != DWM_MODE_ANCHOR) 		
+         printf("mode: get = %d, set = %d\n", cfg.mode, DWM_MODE_ANCHOR);
+		if(cfg.initiator != cfg_an.initiator)  	
+         printf("init: get = %d, set = %d\n", cfg.initiator, cfg_an.initiator);
+		if(cfg.bridge != cfg_an.bridge) 		
+         printf("brdg: get = %d, set = %d\n", cfg.bridge, cfg_an.bridge);
+		if(cfg.common.fw_update_en != cfg_an.common.fw_update_en)	
+			printf("fwup: get = %d, set = %d\n", cfg.common.fw_update_en, cfg_an.common.fw_update_en);
+		if(cfg.common.uwb_mode!= cfg_an.common.uwb_mode)
+         printf("uwb : get = %d, set = %d\n", cfg.common.uwb_mode, cfg_an.common.uwb_mode);
+		if(cfg.common.ble_en != cfg_an.common.ble_en)	
+         printf("ble : get = %d, set = %d\n", cfg.common.ble_en, cfg_an.common.ble_en);
+		if(cfg.common.led_en != cfg_an.common.led_en)	
+         printf("led : get = %d, set = %d\n", cfg.common.led_en, cfg_an.common.led_en);
+		if(cfg.common.enc_en != cfg_an.common.enc_en)	
+         printf("enc : get = %d, set = %d\n", cfg.common.enc_en, cfg_an.common.enc_en);
+
+		//APP_ERR_CHECK(Test_Check(dwm_cfg_anchor_set(&cfg_an)));
+
+                APP_ERR_CHECK(rv = dwm_cfg_anchor_set(&cfg_an));
+		dwm_reset();
+	}
+   	printf("dwm_cfg_anchor_set(&cfg_an):\t\t\t%s\n","pass");
+}
+
+
+
+//void config_anchor(void) {
+
+//  int rv;
+//  dwm_cfg_t cfg;
+//  dwm_cfg_anchor_t cfg_anch;
+
+//  printf("trying to configure node as  anchor\n");
+
+//  /* Get node configuration */
+//  APP_ERR_CHECK(dwm_cfg_get(&cfg));
+
+//  /* Configure device as Anchor */
+//  dwm_cfg_anchor_t cfg_an;    
+//  cfg_an.initiator = 0;
+//  cfg_an.bridge = 0;
+//  //cfg_an.uwb_bh_routing = DWM_UWB_BH_ROUTING_AUTO; 
+//  cfg_an.common.enc_en = 0;
+//  cfg_an.common.led_en = 0;
+//  cfg_an.common.ble_en = 1;
+//  cfg_an.common.uwb_mode = DWM_UWB_MODE_ACTIVE;//DWM_UWB_MODE_ACTIVE;
+//  cfg_an.common.fw_update_en = 0;
+//  rv = dwm_cfg_anchor_set(&cfg_an);
+//  if (rv == DWM_ERR_PERM)
+//  printf("Error: either encryption or BLE can be enabled, encryption can be enabled only if encryption key is set\n");
+  
+//  dwm_reset();
+
+//}
